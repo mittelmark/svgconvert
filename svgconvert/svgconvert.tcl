@@ -50,6 +50,7 @@ namespace eval ::svgconvert {
         cairo_t *ctx;
         
         rsvg_handle_get_dimensions(handle, &dimension_data);
+        //rsvg_handle_get_intrinsic_size_in_pixels(handle,&dimension_data.width, &dimension_data.height);
         double resx = ((double) dimension_data.width) * scalex;
         double resy = ((double) dimension_data.height) * scaley;
         if (pdf) {
@@ -63,8 +64,14 @@ namespace eval ::svgconvert {
         
         cairo_set_source_rgba(ctx, 255, 255, 255, 0);
         cairo_scale(ctx, scalex, scaley);
-        
-        rsvg_handle_render_cairo(handle, ctx);
+        RsvgRectangle viewport = {
+            .x = 0.0,
+            .y = 0.0,
+            .width = resx,
+            .height = resy,
+        };
+        //rsvg_handle_render_cairo(handle, ctx);
+        rsvg_handle_render_document(handle,ctx,&viewport,NULL);
         cairo_paint(ctx);
         cairo_show_page(ctx);
         cairo_destroy(ctx);
@@ -78,6 +85,7 @@ namespace eval ::svgconvert {
             cairo_surface_destroy(surface);
         } 
     }
+    puts $auto_path
     proc svgconv {infile outfile {scalex 1.0} {scaley 1.0}} {
         if {$scalex != $scaley} {
             set scaley $scalex
@@ -111,7 +119,7 @@ namespace eval ::svgconvert {
 
 if {$argv0 eq [info script]} {
     namespace import svgconvert::*
-    svg2svg basic-shapes.svg basic-shapes-out.svg 0.5
-    svg2pdf basic-shapes.svg basic-shapes-out.pdf 0.5
-    svg2png basic-shapes.svg basic-shapes-out.png 0.5
+    svg2svg samples/basic-shapes.svg samples/basic-shapes-out.svg 0.5
+    svg2pdf samples/basic-shapes.svg samples/basic-shapes-out.pdf 0.5
+    svg2png samples/basic-shapes.svg samples/basic-shapes-out.png 0.5
 }
