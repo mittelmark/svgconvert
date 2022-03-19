@@ -4,6 +4,6 @@
 default:
 	tclsh svgconvert.tcl
 
-lib:
+pkg:
 	critcl -pkg svgconvert.tcl
 

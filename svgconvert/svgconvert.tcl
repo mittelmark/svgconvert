@@ -35,8 +35,9 @@ namespace eval ::svgconvert {
         char *svg = strstr(outfile, esvg);    
         
         RsvgHandle *handle;
-        RsvgDimensionData dimension_data;
-        
+        //RsvgDimensionData dimension_data; // deprecated
+        gdouble width = 0.0;
+        gdouble height = 0.0;
         GError* err = NULL;
         handle = rsvg_handle_new_from_file(svgfile, &err);
         
@@ -49,10 +50,10 @@ namespace eval ::svgconvert {
         cairo_surface_t *surface;
         cairo_t *ctx;
         
-        rsvg_handle_get_dimensions(handle, &dimension_data);
-        //rsvg_handle_get_intrinsic_size_in_pixels(handle,&dimension_data.width, &dimension_data.height);
-        double resx = ((double) dimension_data.width) * scalex;
-        double resy = ((double) dimension_data.height) * scaley;
+        //rsvg_handle_get_dimensions(handle, &dimension_data); // deprecated
+        rsvg_handle_get_intrinsic_size_in_pixels(handle,&width, &height);
+        double resx = width*scalex ; //((double) dimension_data.width) * scalex;
+        double resy = height*scaley; //((double) dimension_data.height) * scaley;
         if (pdf) {
             surface = cairo_pdf_surface_create(outfile, (int) resx, (int) resy); 
         } else if (svg) {
@@ -63,14 +64,14 @@ namespace eval ::svgconvert {
         ctx = cairo_create(surface);
         
         cairo_set_source_rgba(ctx, 255, 255, 255, 0);
-        cairo_scale(ctx, scalex, scaley);
+        //cairo_scale(ctx, scalex, scaley);
         RsvgRectangle viewport = {
             .x = 0.0,
             .y = 0.0,
             .width = resx,
             .height = resy,
         };
-        //rsvg_handle_render_cairo(handle, ctx);
+        //rsvg_handle_render_cairo(handle, ctx); // deprecated
         rsvg_handle_render_document(handle,ctx,&viewport,NULL);
         cairo_paint(ctx);
         cairo_show_page(ctx);
@@ -122,4 +123,5 @@ if {$argv0 eq [info script]} {
     svg2svg samples/basic-shapes.svg samples/basic-shapes-out.svg 0.5
     svg2pdf samples/basic-shapes.svg samples/basic-shapes-out.pdf 0.5
     svg2png samples/basic-shapes.svg samples/basic-shapes-out.png 0.5
+    svg2png samples/basic-shapes.svg samples/basic-shapes-out-large.png 2.0    
 }
