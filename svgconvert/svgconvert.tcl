@@ -86,7 +86,6 @@ namespace eval ::svgconvert {
             cairo_surface_destroy(surface);
         } 
     }
-    puts $auto_path
     proc svgconv {infile outfile {scalex 1.0} {scaley 1.0}} {
         if {$scalex != $scaley} {
             set scaley $scalex
@@ -115,7 +114,48 @@ namespace eval ::svgconvert {
         }
         svgconv $svgfile $pngfile $scalex $scaley
     }
-    namespace export svg2pdf svg2png svg2svg
+    proc svgimg {imgname type {src ""}} {
+        if {$src eq ""} {
+            set src $type
+            set type "-file"
+        }
+        if {$type eq "-file"} {
+            if {![regexp {\.svg$} $src]} {
+                error "Only svg files can be converted"
+            }
+            set tmpfile [file tempfile].png
+            svg2png $src $tmpfile
+            image create photo $imgname -file $tmpfile
+            file delete $tmpfile
+            return $imgname
+        } elseif {$type eq "-data"} {
+            set svgfile [file tempfile].svg
+            set out [open $svgfile w 0600]
+            puts $out [binary decode base64 $src]
+            close $out
+            svgimg $imgname -file $svgfile
+            file delete $svgfile
+            return $imgname
+        }
+        
+    }
+    proc svg2base64 {filename} {
+        if [catch {open $filename r} infh] {
+            puts stderr "Cannot open $filename: $infh"
+        } else {
+            set lines [read $infh]
+            set b64 [binary encode base64 $lines]
+            close $infh
+            return $b64
+        }
+    }
+    proc base642svg {base64 filename} {
+        set svgfile $filename
+        set out [open $svgfile w 0600]
+        puts $out [binary decode base64 $base64]
+        close $out
+    }
+    namespace export svg2pdf svg2png svg2svg svgimg svg2base64
 }
 
 if {$argv0 eq [info script]} {
@@ -124,4 +164,11 @@ if {$argv0 eq [info script]} {
     svg2pdf samples/basic-shapes.svg samples/basic-shapes-out.pdf 0.5
     svg2png samples/basic-shapes.svg samples/basic-shapes-out.png 0.5
     svg2png samples/basic-shapes.svg samples/basic-shapes-out-large.png 2.0    
+    package require Tk
+    svgimg ::img samples/basic-shapes.svg
+    #puts [svg2base64 samples/basic-shapes.svg]
+    pack [ttk::label .lbl -image ::img] -side left
+    set b64 "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiIHN0YW5kYWxvbmU9InllcyI/PgogICAgPHN2ZyB2ZXJzaW9uPSIxLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgaGVpZ2h0PSIyNTAiIHdpZHRoPSIyMDAiPgoKPHJlY3QgeD0iMTAiIHk9IjEwIiB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHN0cm9rZT0iYmxhY2siIGZpbGw9InRyYW5zcGFyZW50IiBzdHJva2Utd2lkdGg9IjUiIC8+Cgo8cmVjdCB4PSI2MCIgeT0iMTAiIHJ4PSIxMCIgcnk9IjEwIiB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHN0cm9rZT0iYmxhY2siIGZpbGw9InRyYW5zcGFyZW50IiBzdHJva2Utd2lkdGg9IjUiIC8+Cgo8Y2lyY2xlIGN4PSIyNSIgY3k9Ijc1IiByPSIyMCIgc3Ryb2tlPSJyZWQiIGZpbGw9InRyYW5zcGFyZW50IiBzdHJva2Utd2lkdGg9IjUiIC8+Cgo8ZWxsaXBzZSBjeD0iNzUiIGN5PSI3NSIgcng9IjIwIiByeT0iNSIgc3Ryb2tlPSJyZWQiIGZpbGw9InRyYW5zcGFyZW50IiBzdHJva2Utd2lkdGg9IjUiIC8+Cgo8bGluZSB4MT0iMTAiIHgyPSI1MCIgeTE9IjExMCIgeTI9IjE1MCIgc3Ryb2tlPSJvcmFuZ2UiIHN0cm9rZS13aWR0aD0iNSIgLz4KCjxwb2x5bGluZSBwb2ludHM9IjYwICAxMTAgNjUgMTIwIDcwIDExNSA3NSAxMzAgODAgMTI1IDg1IDE0MCA5MCAxMzUgOTUgMTUwIDEwMCAxNDUiIHN0cm9rZT0ib3JhbmdlIiBmaWxsPSJ0cmFuc3BhcmVudCIgc3Ryb2tlLXdpZHRoPSI1IiAvPgoKPHBvbHlnb24gcG9pbnRzPSI1MCAgMTYwIDU1IDE4MCA3MCAxODAgNjAgMTkwIDY1IDIwNSA1MCAxOTUgMzUgMjA1IDQwIDE5MCAzMCAxODAgNDUgMTgwIiBzdHJva2U9ImdyZWVuIiBmaWxsPSJ0cmFuc3BhcmVudCIgc3Ryb2tlLXdpZHRoPSI1IiAvPgoKPHBhdGggZD0iTTIwLDIzMCAgUTQwLDIwNSA1MCwyMzBUOTAsMjMwIiBmaWxsPSJub25lIiBzdHJva2U9ImJsdWUiIHN0cm9rZS13aWR0aD0iNSIgLz4KCjwvc3ZnPgo="
+    svgimg ::img2 -data $b64
+    pack [ttk::label .lbl2 -image ::img2] -side left
 }
