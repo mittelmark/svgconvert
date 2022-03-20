@@ -1,10 +1,13 @@
 
-package require critcl
 package provide svgconvert 1.0
 
 namespace eval ::svgconvert {
     # collect all the include directories
-    if {[critcl::compiling]} {
+    catch {
+        package require critcl
+    }
+
+    if {[info command ::critcl::compiling] ne "" && [critcl::compiling]} {
         catch {
         set options [regsub -all -- -I [exec pkg-config --cflags --libs cairo --libs librsvg-2.0] "I "]
         set dirs [list]
@@ -95,10 +98,8 @@ namespace eval ::svgconvert {
         }
         }
     } 
-    #puts "critcl: [info command ::svgconvert::svgconv]"
     if {[info command ::svgconvert::svgconv] eq "" && [auto_execok rsvg-convert] ne ""} {
         proc svgconv {infile outfile {scalex 1.0} {scaley 1.0}} {
-            puts "converting $infile using rsvg-convert"
             if {$scalex != $scaley} {
                 set scaley $scalex
             }
@@ -118,9 +119,7 @@ namespace eval ::svgconvert {
             exec cairosvg -f [string range [string tolower [file extension $outfile]] 1 end] -o $outfile -s $scalex $infile 
         }
     } elseif {[info command ::svgconvert::svgconv] eq ""}  {
-        proc svgconv {infile outfile {scalex 1.0} {scaley 1.0}} {
-            puts stderr "Error: no svg conversion available neither critcl and librsvg2-dev or the terminal applications rsvg-convert or cairosvg are available! Please install"
-        }
+        puts stderr "Error: no svg conversion available neither critcl and librsvg2-dev or the terminal applications rsvg-convert or cairosvg are available! Please install"
     }
         
     proc svg2svg {svginfile svgoutfile {scalex 1.0} {scaley 1.0}} {
@@ -141,28 +140,30 @@ namespace eval ::svgconvert {
         }
         svgconv $svgfile $pngfile $scalex $scaley
     }
-    proc svgimg {imgname type {src ""}} {
+    proc svgimg {type {src ""}} {
         if {$src eq ""} {
             set src $type
             set type "-file"
         }
         if {$type eq "-file"} {
-            if {![regexp {\.svg$} $src]} {
+            if {![regexp -nocase {\.svg$} $src]} {
                 error "Only svg files can be converted"
             }
             set tmpfile [file tempfile].png
             svg2png $src $tmpfile
-            image create photo $imgname -file $tmpfile
+            set img [image create photo -file $tmpfile]
+            $img write $tmpfile -background white
+            set img [image create photo -file $tmpfile]
             file delete $tmpfile
-            return $imgname
+            return $img
         } elseif {$type eq "-data"} {
             set svgfile [file tempfile].svg
             set out [open $svgfile w 0600]
             puts $out [binary decode base64 $src]
             close $out
-            svgimg $imgname -file $svgfile
+            set img [svgimg -file $svgfile]
             file delete $svgfile
-            return $imgname
+            return $img
         }
         
     }
@@ -187,6 +188,7 @@ namespace eval ::svgconvert {
 
 if {$argv0 eq [info script]} {
     namespace import svgconvert::*
+    # just for timing
     foreach i [list 1 2 3 4 5 6] {
         svg2svg samples/basic-shapes.svg samples/basic-shapes-out.svg 0.5
         svg2pdf samples/basic-shapes.svg samples/basic-shapes-out.pdf 0.5
@@ -194,11 +196,12 @@ if {$argv0 eq [info script]} {
         svg2png samples/basic-shapes.svg samples/basic-shapes-out-large.png 2.0    
     }
     package require Tk
-    svgimg ::img samples/basic-shapes.svg
-    #puts [svg2base64 samples/basic-shapes.svg]
-    pack [ttk::label .lbl -image ::img] -side left
+    set f [frame .fr -background white]
+    set img [svgimg samples/basic-shapes.svg]
+    pack [ttk::label .fr.lbl -image $img -border 0] -side left  -padx 10 -pady 10
     set b64 "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiIHN0YW5kYWxvbmU9InllcyI/PgogICAgPHN2ZyB2ZXJzaW9uPSIxLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgaGVpZ2h0PSIyNTAiIHdpZHRoPSIyMDAiPgoKPHJlY3QgeD0iMTAiIHk9IjEwIiB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHN0cm9rZT0iYmxhY2siIGZpbGw9InRyYW5zcGFyZW50IiBzdHJva2Utd2lkdGg9IjUiIC8+Cgo8cmVjdCB4PSI2MCIgeT0iMTAiIHJ4PSIxMCIgcnk9IjEwIiB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHN0cm9rZT0iYmxhY2siIGZpbGw9InRyYW5zcGFyZW50IiBzdHJva2Utd2lkdGg9IjUiIC8+Cgo8Y2lyY2xlIGN4PSIyNSIgY3k9Ijc1IiByPSIyMCIgc3Ryb2tlPSJyZWQiIGZpbGw9InRyYW5zcGFyZW50IiBzdHJva2Utd2lkdGg9IjUiIC8+Cgo8ZWxsaXBzZSBjeD0iNzUiIGN5PSI3NSIgcng9IjIwIiByeT0iNSIgc3Ryb2tlPSJyZWQiIGZpbGw9InRyYW5zcGFyZW50IiBzdHJva2Utd2lkdGg9IjUiIC8+Cgo8bGluZSB4MT0iMTAiIHgyPSI1MCIgeTE9IjExMCIgeTI9IjE1MCIgc3Ryb2tlPSJvcmFuZ2UiIHN0cm9rZS13aWR0aD0iNSIgLz4KCjxwb2x5bGluZSBwb2ludHM9IjYwICAxMTAgNjUgMTIwIDcwIDExNSA3NSAxMzAgODAgMTI1IDg1IDE0MCA5MCAxMzUgOTUgMTUwIDEwMCAxNDUiIHN0cm9rZT0ib3JhbmdlIiBmaWxsPSJ0cmFuc3BhcmVudCIgc3Ryb2tlLXdpZHRoPSI1IiAvPgoKPHBvbHlnb24gcG9pbnRzPSI1MCAgMTYwIDU1IDE4MCA3MCAxODAgNjAgMTkwIDY1IDIwNSA1MCAxOTUgMzUgMjA1IDQwIDE5MCAzMCAxODAgNDUgMTgwIiBzdHJva2U9ImdyZWVuIiBmaWxsPSJ0cmFuc3BhcmVudCIgc3Ryb2tlLXdpZHRoPSI1IiAvPgoKPHBhdGggZD0iTTIwLDIzMCAgUTQwLDIwNSA1MCwyMzBUOTAsMjMwIiBmaWxsPSJub25lIiBzdHJva2U9ImJsdWUiIHN0cm9rZS13aWR0aD0iNSIgLz4KCjwvc3ZnPgo="
-    svgimg ::img2 -data $b64
-    pack [ttk::label .lbl2 -image ::img2] -side left
-    exit 0
+    set img2 [svgimg -data $b64]
+    pack [ttk::label .fr.lbl2 -image $img2 -border 0] -side left -padx 10 -pady 10
+    pack $f -side top -fill both -expand true
+    #exit 0
 }
