@@ -2,98 +2,125 @@
 package require critcl
 package provide svgconvert 1.0
 
-if {![critcl::compiling]} {
-    puts stderr "This extension cannot be compiled without critcl enabled"
-    exit 1
-}
 namespace eval ::svgconvert {
     # collect all the include directories
-    set options [regsub -all -- -I [exec pkg-config --cflags --libs cairo --libs librsvg-2.0] "I "]
-    set dirs [list]
-    foreach {i dir} $options {
-        if {$i eq "I"} {
-            lappend dirs $dir
+    if {[critcl::compiling]} {
+        catch {
+        set options [regsub -all -- -I [exec pkg-config --cflags --libs cairo --libs librsvg-2.0] "I "]
+        set dirs [list]
+        foreach {i dir} $options {
+            if {$i eq "I"} {
+                lappend dirs $dir
+            }
         }
-    }
-    critcl::clibraries -lrsvg-2 -lm -lgio-2.0 -lgdk_pixbuf-2.0 -lgobject-2.0 -lglib-2.0 -lcairo -pthread
-    critcl::config I $dirs
-    critcl::ccode {
-        #include <string.h>
-        #include <stdio.h>
-        #include <cairo.h>
-        #include <cairo/cairo-pdf.h>
-        #include <cairo/cairo-svg.h>        
-        #include <librsvg/rsvg.h>
-    }
-    
-    
-    critcl::cproc svgconvert {char* svgfile  char* outfile double scalex double scaley} void {
-        // new
-        char *epdf = ".pdf";
-        char *esvg = ".svg";
-        char *pdf = strstr(outfile, epdf);
-        char *svg = strstr(outfile, esvg);    
-        
-        RsvgHandle *handle;
-        //RsvgDimensionData dimension_data; // deprecated
-        gdouble width = 0.0;
-        gdouble height = 0.0;
-        GError* err = NULL;
-        handle = rsvg_handle_new_from_file(svgfile, &err);
-        
-        if (err != NULL) {
-            fprintf(stderr, "libsvgconv: Failed to load svg: '%s'; %s\n", svgfile, (char*) err->message);
-            g_error_free(err);
-            err = NULL;
+        critcl::clibraries -lrsvg-2 -lm -lgio-2.0 -lgdk_pixbuf-2.0 -lgobject-2.0 -lglib-2.0 -lcairo -pthread
+        critcl::config I $dirs
+        critcl::ccode {
+            #include <string.h>
+            #include <stdio.h>
+            #include <cairo.h>
+            #include <cairo/cairo-pdf.h>
+            #include <cairo/cairo-svg.h>        
+            #include <librsvg/rsvg.h>
         }
         
-        cairo_surface_t *surface;
-        cairo_t *ctx;
         
-        //rsvg_handle_get_dimensions(handle, &dimension_data); // deprecated
-        rsvg_handle_get_intrinsic_size_in_pixels(handle,&width, &height);
-        double resx = width*scalex ; //((double) dimension_data.width) * scalex;
-        double resy = height*scaley; //((double) dimension_data.height) * scaley;
-        if (pdf) {
-            surface = cairo_pdf_surface_create(outfile, (int) resx, (int) resy); 
-        } else if (svg) {
-            surface = cairo_svg_surface_create(outfile, (int) resx, (int) resy); 
-        } else {
-            surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int) resx, (int) resy);
+        critcl::cproc svgconvert {char* svgfile  char* outfile double scalex double scaley} void {
+            // new
+            char *epdf = ".pdf";
+            char *esvg = ".svg";
+            char *pdf = strstr(outfile, epdf);
+            char *svg = strstr(outfile, esvg);    
+            
+            RsvgHandle *handle;
+            //RsvgDimensionData dimension_data; // deprecated
+            gdouble width = 0.0;
+            gdouble height = 0.0;
+            GError* err = NULL;
+            handle = rsvg_handle_new_from_file(svgfile, &err);
+            
+            if (err != NULL) {
+                fprintf(stderr, "libsvgconv: Failed to load svg: '%s'; %s\n", svgfile, (char*) err->message);
+                g_error_free(err);
+                err = NULL;
+            }
+            
+            cairo_surface_t *surface;
+            cairo_t *ctx;
+            
+            //rsvg_handle_get_dimensions(handle, &dimension_data); // deprecated
+            rsvg_handle_get_intrinsic_size_in_pixels(handle,&width, &height);
+            double resx = width*scalex ; //((double) dimension_data.width) * scalex;
+            double resy = height*scaley; //((double) dimension_data.height) * scaley;
+            if (pdf) {
+                surface = cairo_pdf_surface_create(outfile, (int) resx, (int) resy); 
+            } else if (svg) {
+                surface = cairo_svg_surface_create(outfile, (int) resx, (int) resy); 
+            } else {
+                surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int) resx, (int) resy);
+            }
+            ctx = cairo_create(surface);
+            
+            cairo_set_source_rgba(ctx, 255, 255, 255, 0);
+            //cairo_scale(ctx, scalex, scaley);
+            RsvgRectangle viewport = {
+                .x = 0.0,
+                .y = 0.0,
+                .width = resx,
+                .height = resy,
+            };
+            //rsvg_handle_render_cairo(handle, ctx); // deprecated
+            rsvg_handle_render_document(handle,ctx,&viewport,NULL);
+            cairo_paint(ctx);
+            cairo_show_page(ctx);
+            cairo_destroy(ctx);
+            // Destroying cairo context
+            cairo_surface_flush(surface);
+            if (pdf || svg) {
+                // Destroying PDF surface
+                cairo_surface_destroy(surface);
+            } else {
+                cairo_surface_write_to_png(surface, outfile);
+                cairo_surface_destroy(surface);
+            } 
         }
-        ctx = cairo_create(surface);
-        
-        cairo_set_source_rgba(ctx, 255, 255, 255, 0);
-        //cairo_scale(ctx, scalex, scaley);
-        RsvgRectangle viewport = {
-            .x = 0.0,
-            .y = 0.0,
-            .width = resx,
-            .height = resy,
-        };
-        //rsvg_handle_render_cairo(handle, ctx); // deprecated
-        rsvg_handle_render_document(handle,ctx,&viewport,NULL);
-        cairo_paint(ctx);
-        cairo_show_page(ctx);
-        cairo_destroy(ctx);
-        // Destroying cairo context
-        cairo_surface_flush(surface);
-        if (pdf || svg) {
-            // Destroying PDF surface
-            cairo_surface_destroy(surface);
-        } else {
-            cairo_surface_write_to_png(surface, outfile);
-            cairo_surface_destroy(surface);
-        } 
-    }
-    proc svgconv {infile outfile {scalex 1.0} {scaley 1.0}} {
-        if {$scalex != $scaley} {
-            set scaley $scalex
+        proc svgconv {infile outfile {scalex 1.0} {scaley 1.0}} {
+            if {$scalex != $scaley} {
+                set scaley $scalex
+            }
+            if {![file exists $infile]} {
+                error "Error: File $infile does not exist!"
+            }
+            svgconvert::svgconvert $infile $outfile $scalex $scaley
         }
-        if {![file exists $infile]} {
-            error "Error: File $infile does not exist!"
         }
-        svgconvert::svgconvert $infile $outfile $scalex $scaley
+    } 
+    #puts "critcl: [info command ::svgconvert::svgconv]"
+    if {[info command ::svgconvert::svgconv] eq "" && [auto_execok rsvg-convert] ne ""} {
+        proc svgconv {infile outfile {scalex 1.0} {scaley 1.0}} {
+            puts "converting $infile using rsvg-convert"
+            if {$scalex != $scaley} {
+                set scaley $scalex
+            }
+            if {![file exists $infile]} {
+                error "Error: File $infile does not exist!"
+            }
+            exec rsvg-convert $infile -o $outfile -z $scalex
+        }
+    } elseif {[info command ::svgconvert::svgconv] eq "" && [auto_execok cairosvg] ne ""} {
+        proc svgconv {infile outfile {scalex 1.0} {scaley 1.0}} {
+            if {$scalex != $scaley} {
+                set scaley $scalex
+            }
+            if {![file exists $infile]} {
+                error "Error: File $infile does not exist!"
+            }
+            exec cairosvg -f [string range [string tolower [file extension $outfile]] 1 end] -o $outfile -s $scalex $infile 
+        }
+    } elseif {[info command ::svgconvert::svgconv] eq ""}  {
+        proc svgconv {infile outfile {scalex 1.0} {scaley 1.0}} {
+            puts stderr "Error: no svg conversion available neither critcl and librsvg2-dev or the terminal applications rsvg-convert or cairosvg are available! Please install"
+        }
     }
         
     proc svg2svg {svginfile svgoutfile {scalex 1.0} {scaley 1.0}} {
@@ -160,10 +187,12 @@ namespace eval ::svgconvert {
 
 if {$argv0 eq [info script]} {
     namespace import svgconvert::*
-    svg2svg samples/basic-shapes.svg samples/basic-shapes-out.svg 0.5
-    svg2pdf samples/basic-shapes.svg samples/basic-shapes-out.pdf 0.5
-    svg2png samples/basic-shapes.svg samples/basic-shapes-out.png 0.5
-    svg2png samples/basic-shapes.svg samples/basic-shapes-out-large.png 2.0    
+    foreach i [list 1 2 3 4 5 6] {
+        svg2svg samples/basic-shapes.svg samples/basic-shapes-out.svg 0.5
+        svg2pdf samples/basic-shapes.svg samples/basic-shapes-out.pdf 0.5
+        svg2png samples/basic-shapes.svg samples/basic-shapes-out.png 0.5
+        svg2png samples/basic-shapes.svg samples/basic-shapes-out-large.png 2.0    
+    }
     package require Tk
     svgimg ::img samples/basic-shapes.svg
     #puts [svg2base64 samples/basic-shapes.svg]
@@ -171,4 +200,5 @@ if {$argv0 eq [info script]} {
     set b64 "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiIHN0YW5kYWxvbmU9InllcyI/PgogICAgPHN2ZyB2ZXJzaW9uPSIxLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgaGVpZ2h0PSIyNTAiIHdpZHRoPSIyMDAiPgoKPHJlY3QgeD0iMTAiIHk9IjEwIiB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHN0cm9rZT0iYmxhY2siIGZpbGw9InRyYW5zcGFyZW50IiBzdHJva2Utd2lkdGg9IjUiIC8+Cgo8cmVjdCB4PSI2MCIgeT0iMTAiIHJ4PSIxMCIgcnk9IjEwIiB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHN0cm9rZT0iYmxhY2siIGZpbGw9InRyYW5zcGFyZW50IiBzdHJva2Utd2lkdGg9IjUiIC8+Cgo8Y2lyY2xlIGN4PSIyNSIgY3k9Ijc1IiByPSIyMCIgc3Ryb2tlPSJyZWQiIGZpbGw9InRyYW5zcGFyZW50IiBzdHJva2Utd2lkdGg9IjUiIC8+Cgo8ZWxsaXBzZSBjeD0iNzUiIGN5PSI3NSIgcng9IjIwIiByeT0iNSIgc3Ryb2tlPSJyZWQiIGZpbGw9InRyYW5zcGFyZW50IiBzdHJva2Utd2lkdGg9IjUiIC8+Cgo8bGluZSB4MT0iMTAiIHgyPSI1MCIgeTE9IjExMCIgeTI9IjE1MCIgc3Ryb2tlPSJvcmFuZ2UiIHN0cm9rZS13aWR0aD0iNSIgLz4KCjxwb2x5bGluZSBwb2ludHM9IjYwICAxMTAgNjUgMTIwIDcwIDExNSA3NSAxMzAgODAgMTI1IDg1IDE0MCA5MCAxMzUgOTUgMTUwIDEwMCAxNDUiIHN0cm9rZT0ib3JhbmdlIiBmaWxsPSJ0cmFuc3BhcmVudCIgc3Ryb2tlLXdpZHRoPSI1IiAvPgoKPHBvbHlnb24gcG9pbnRzPSI1MCAgMTYwIDU1IDE4MCA3MCAxODAgNjAgMTkwIDY1IDIwNSA1MCAxOTUgMzUgMjA1IDQwIDE5MCAzMCAxODAgNDUgMTgwIiBzdHJva2U9ImdyZWVuIiBmaWxsPSJ0cmFuc3BhcmVudCIgc3Ryb2tlLXdpZHRoPSI1IiAvPgoKPHBhdGggZD0iTTIwLDIzMCAgUTQwLDIwNSA1MCwyMzBUOTAsMjMwIiBmaWxsPSJub25lIiBzdHJva2U9ImJsdWUiIHN0cm9rZS13aWR0aD0iNSIgLz4KCjwvc3ZnPgo="
     svgimg ::img2 -data $b64
     pack [ttk::label .lbl2 -image ::img2] -side left
+    exit 0
 }
